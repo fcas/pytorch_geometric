@@ -1,9 +1,10 @@
 import numpy as np
+import pytest
 import torch
 
 from torch_geometric.loader import NeighborSampler
 from torch_geometric.nn.conv import GATConv, SAGEConv
-from torch_geometric.testing import onlyOnline, withPackage
+from torch_geometric.testing import withPackage
 from torch_geometric.typing import SparseTensor
 from torch_geometric.utils import erdos_renyi_graph
 
@@ -34,8 +35,8 @@ def test_neighbor_sampler_basic():
 
     loader = NeighborSampler(adj_t, sizes=[2, 4], batch_size=2)
 
-    for batch_size, n_id, adjs in loader:
-        for (adj_t, e_id, size) in adjs:
+    for _, _, adjs in loader:
+        for adj_t, _, size in adjs:
             assert adj_t.size(0) == size[1]
             assert adj_t.size(1) == size[0]
 
@@ -47,7 +48,7 @@ def test_neighbor_sampler_invalid_kwargs():
     NeighborSampler(edge_index, sizes=[-1], collate_fn=None, dataset=None)
 
 
-@onlyOnline
+@pytest.mark.dataset
 @withPackage('torch_sparse')
 def test_neighbor_sampler_on_cora(get_dataset):
     dataset = get_dataset(name='Cora')

@@ -10,7 +10,7 @@ This particular graph store abstraction makes a few key assumptions:
   support dynamic modification of edge indices once they have been inserted
   into the graph store.
 
-It is the job of a graph store implementor class to handle these assumptions
+It is the job of a graph store implementer class to handle these assumptions
 properly. For example, a simple in-memory graph store implementation may
 concatenate all metadata values with an edge index and use this as a unique
 index in a KV store. More complicated implementations may choose to partition
@@ -116,7 +116,6 @@ class GraphStore(ABC):
     def _put_edge_index(self, edge_index: EdgeTensorType,
                         edge_attr: EdgeAttr) -> bool:
         r"""To be implemented by :class:`GraphStore` subclasses."""
-        pass
 
     def put_edge_index(self, edge_index: EdgeTensorType, *args,
                        **kwargs) -> bool:
@@ -137,7 +136,6 @@ class GraphStore(ABC):
     @abstractmethod
     def _get_edge_index(self, edge_attr: EdgeAttr) -> Optional[EdgeTensorType]:
         r"""To be implemented by :class:`GraphStore` subclasses."""
-        pass
 
     def get_edge_index(self, *args, **kwargs) -> EdgeTensorType:
         r"""Synchronously obtains an :obj:`edge_index` tuple from the
@@ -160,7 +158,6 @@ class GraphStore(ABC):
     @abstractmethod
     def _remove_edge_index(self, edge_attr: EdgeAttr) -> bool:
         r"""To be implemented by :class:`GraphStore` subclasses."""
-        pass
 
     def remove_edge_index(self, *args, **kwargs) -> bool:
         r"""Synchronously deletes an :obj:`edge_index` tuple from the
@@ -177,7 +174,6 @@ class GraphStore(ABC):
     @abstractmethod
     def get_all_edge_attrs(self) -> List[EdgeAttr]:
         r"""Returns all registered edge attributes."""
-        pass
 
     # Layout Conversion #######################################################
 
@@ -265,7 +261,8 @@ class GraphStore(ABC):
                 col = ptr2index(col)
 
             if attr.layout != EdgeLayout.CSR:  # COO->CSR
-                num_rows = attr.size[0] if attr.size else int(row.max()) + 1
+                num_rows = attr.size[0] if attr.size is not None else int(
+                    row.max()) + 1
                 row, perm = index_sort(row, max_value=num_rows)
                 col = col[perm]
                 row = index2ptr(row, num_rows)

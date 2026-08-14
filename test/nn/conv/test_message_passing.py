@@ -122,12 +122,11 @@ def test_my_conv_basic():
         assert torch.allclose(conv((x1, None), adj2.t()), out2, atol=1e-6)
 
     # Test gradient computation for `torch.sparse` tensors:
-    if torch_geometric.typing.WITH_PT112:
-        conv.fuse = True
-        torch_adj_t = adj1.t().requires_grad_()
-        out = conv((x1, x2), torch_adj_t)
-        out.sum().backward()
-        assert torch_adj_t.grad is not None
+    conv.fuse = True
+    torch_adj_t = adj1.t().requires_grad_()
+    out = conv((x1, x2), torch_adj_t)
+    out.sum().backward()
+    assert torch_adj_t.grad is not None
 
 
 def test_my_conv_save(tmp_path):
@@ -139,7 +138,7 @@ def test_my_conv_save(tmp_path):
 
     path = osp.join(tmp_path, 'model.pt')
     torch.save(conv, path)
-    conv = torch.load(path)
+    conv = torch.load(path, weights_only=False)
     assert conv._jinja_propagate is not None
     assert conv.__class__._jinja_propagate is not None
     assert conv._orig_propagate is not None
@@ -168,7 +167,8 @@ class MyCommentedConv(MessagePassing):
 
 
 def test_my_commented_conv():
-    # Check that `self.propagate` occurences in comments are correctly ignored.
+    # Check that `self.propagate` occurrences in comments are correctly
+    # ignored.
     x = torch.randn(4, 8)
     edge_index = torch.tensor([[0, 1, 2, 3], [0, 0, 1, 1]])
 
@@ -728,3 +728,35 @@ def test_traceable_my_conv_with_self_loops(num_nodes):
 
     assert torch.allclose(out, traced_out)
     assert torch.allclose(out, scripted_out)
+
+
+def test_pickle(tmp_path):
+    path = osp.join(tmp_path, 'model.pt')
+    model = MyConv(16, 32)
+    torch.save(model, path)
+
+    MyConv.propagate = MyConv._orig_propagate
+
+    model = torch.load(path, weights_only=False)
+    torch.jit.script(model)
+
+
+class MyOptionalEdgeAttrConv(MessagePassing):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, edge_index, edge_attr=None):
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
+
+    def message(self, x_j, edge_attr=None):
+        return x_j if edge_attr is None else x_j * edge_attr.view(-1, 1)
+
+
+def test_my_optional_edge_attr_conv():
+    conv = MyOptionalEdgeAttrConv()
+
+    x = torch.randn(4, 8)
+    edge_index = torch.tensor([[0, 1, 2, 3], [0, 0, 1, 1]])
+
+    out = conv(x, edge_index)
+    assert out.size() == (4, 8)

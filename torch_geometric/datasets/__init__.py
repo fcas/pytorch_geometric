@@ -30,6 +30,7 @@ from .faust import FAUST
 from .dynamic_faust import DynamicFAUST
 from .shapenet import ShapeNet
 from .modelnet import ModelNet
+from .medshapenet import MedShapeNet
 from .coma import CoMA
 from .shrec2016 import SHREC2016
 from .tosca import TOSCA
@@ -61,7 +62,6 @@ from .gemsec import GemsecDeezer
 from .twitch import Twitch
 from .airports import Airports
 from .lrgb import LRGBDataset
-from .neurograph import NeuroGraphDataset
 from .malnet_tiny import MalNetTiny
 from .omdb import OMDB
 from .polblogs import PolBlogs
@@ -76,6 +76,16 @@ from .jodie import JODIEDataset
 from .wikidata import Wikidata5M
 from .myket import MyketDataset
 from .brca_tgca import BrcaTcga
+from .neurograph import NeuroGraphDataset
+from .web_qsp_dataset import WebQSPDataset, CWQDataset
+from .git_mol_dataset import GitMolDataset
+from .molecule_gpt_dataset import MoleculeGPTDataset
+from .instruct_mol_dataset import InstructMolDataset
+from .protein_mpnn_dataset import ProteinMPNNDataset
+from .tag_dataset import TAGDataset
+from .city import CityNetwork
+from .teeth3ds import Teeth3DS
+from .graphland import GraphLandDataset
 
 from .dbp15k import DBP15K
 from .aminer import AMiner
@@ -93,6 +103,7 @@ from .amazon_book import AmazonBook
 from .hm import HM
 from .ose_gvcs import OSE_GVCS
 from .rcdd import RCDD
+from .opf import OPFDataset
 
 from .cornell import CornellTemporalHyperGraphDataset
 
@@ -140,6 +151,7 @@ homo_datasets = [
     'DynamicFAUST',
     'ShapeNet',
     'ModelNet',
+    'MedShapeNet',
     'CoMA',
     'SHREC2016',
     'TOSCA',
@@ -187,6 +199,16 @@ homo_datasets = [
     'MyketDataset',
     'BrcaTcga',
     'NeuroGraphDataset',
+    'WebQSPDataset',
+    'CWQDataset',
+    'GitMolDataset',
+    'MoleculeGPTDataset',
+    'InstructMolDataset',
+    'ProteinMPNNDataset',
+    'TAGDataset',
+    'CityNetwork',
+    'Teeth3DS',
+    'GraphLandDataset',
 ]
 
 hetero_datasets = [
@@ -206,6 +228,7 @@ hetero_datasets = [
     'HM',
     'OSE_GVCS',
     'RCDD',
+    'OPFDataset',
 ]
 hyper_datasets = [
     'CornellTemporalHyperGraphDataset',

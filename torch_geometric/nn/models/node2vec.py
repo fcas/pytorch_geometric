@@ -6,7 +6,7 @@ from torch.nn import Embedding
 from torch.utils.data import DataLoader
 
 from torch_geometric.index import index2ptr
-from torch_geometric.typing import WITH_PYG_LIB, WITH_TORCH_CLUSTER
+from torch_geometric.typing import WITH_PYG_LIB
 from torch_geometric.utils import sort_edge_index
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 
@@ -58,18 +58,10 @@ class Node2Vec(torch.nn.Module):
     ):
         super().__init__()
 
-        if WITH_PYG_LIB and p == 1.0 and q == 1.0:
-            self.random_walk_fn = torch.ops.pyg.random_walk
-        elif WITH_TORCH_CLUSTER:
-            self.random_walk_fn = torch.ops.torch_cluster.random_walk
-        else:
-            if p == 1.0 and q == 1.0:
-                raise ImportError(f"'{self.__class__.__name__}' "
-                                  f"requires either the 'pyg-lib' or "
-                                  f"'torch-cluster' package")
-            else:
-                raise ImportError(f"'{self.__class__.__name__}' "
-                                  f"requires the 'torch-cluster' package")
+        if not WITH_PYG_LIB:
+            raise ImportError(f"'{self.__class__.__name__}' "
+                              f"requires 'pyg-lib>=0.6.0'")
+        self.random_walk_fn = torch.ops.pyg.random_walk
 
         self.num_nodes = maybe_num_nodes(edge_index, num_nodes)
 
@@ -173,7 +165,6 @@ class Node2Vec(torch.nn.Module):
         test_z: Tensor,
         test_y: Tensor,
         solver: str = 'lbfgs',
-        multi_class: str = 'auto',
         *args,
         **kwargs,
     ) -> float:
@@ -182,7 +173,7 @@ class Node2Vec(torch.nn.Module):
         """
         from sklearn.linear_model import LogisticRegression
 
-        clf = LogisticRegression(solver=solver, multi_class=multi_class, *args,
+        clf = LogisticRegression(*args, solver=solver,
                                  **kwargs).fit(train_z.detach().cpu().numpy(),
                                                train_y.detach().cpu().numpy())
         return clf.score(test_z.detach().cpu().numpy(),

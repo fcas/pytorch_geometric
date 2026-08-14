@@ -1,6 +1,5 @@
-import copy
 import math
-import sys
+import os
 import time
 from typing import Any, Dict, Optional, Tuple, Union
 
@@ -58,7 +57,7 @@ def reset_bias_(bias: Optional[Tensor], in_channels: int,
 
 
 class Linear(torch.nn.Module):
-    r"""Applies a linear tranformation to the incoming data.
+    r"""Applies a linear transformation to the incoming data.
 
     .. math::
         \mathbf{x}^{\prime} = \mathbf{x} \mathbf{W}^{\top} + \mathbf{b}
@@ -113,25 +112,6 @@ class Linear(torch.nn.Module):
             self.register_parameter('bias', None)
 
         self.reset_parameters()
-
-    def __deepcopy__(self, memo):
-        # PyTorch<1.13 cannot handle deep copies of uninitialized parameters :(
-        # TODO Drop this code once PyTorch 1.12 is no longer supported.
-        out = Linear(
-            self.in_channels,
-            self.out_channels,
-            self.bias is not None,
-            self.weight_initializer,
-            self.bias_initializer,
-        ).to(self.weight.device)
-
-        if self.in_channels > 0:
-            out.weight = copy.deepcopy(self.weight, memo)
-
-        if self.bias is not None:
-            out.bias = copy.deepcopy(self.bias, memo)
-
-        return out
 
     def reset_parameters(self):
         r"""Resets all learnable parameters of the module."""
@@ -192,7 +172,7 @@ class Linear(torch.nn.Module):
 
 
 class HeteroLinear(torch.nn.Module):
-    r"""Applies separate linear tranformations to the incoming data according
+    r"""Applies separate linear transformations to the incoming data according
     to types.
 
     For type :math:`\kappa`, it computes
@@ -282,7 +262,7 @@ class HeteroLinear(torch.nn.Module):
         key: int,
     ) -> None:
 
-        MEASURE_ITER = 1 if 'pytest' in sys.modules else 3
+        MEASURE_ITER = 1 if 'PYTEST_CURRENT_TEST' in os.environ else 3
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
@@ -365,7 +345,8 @@ class HeteroLinear(torch.nn.Module):
 
 
 class HeteroDictLinear(torch.nn.Module):
-    r"""Applies separate linear tranformations to the incoming data dictionary.
+    r"""Applies separate linear transformations to the incoming data
+    dictionary.
 
     For key :math:`\kappa`, it computes
 
@@ -479,7 +460,7 @@ class HeteroDictLinear(torch.nn.Module):
             lin = self.lins[key]
             if is_uninitialized_parameter(lin.weight):
                 self.lins[key].initialize_parameters(None, x)
-        self.reset_parameters()
+                self.lins[key].reset_parameters()
         self._hook.remove()
         self.in_channels = {key: x.size(-1) for key, x in input[0].items()}
         delattr(self, '_hook')

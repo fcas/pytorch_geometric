@@ -1,15 +1,38 @@
-from torch_geometric.testing import onlyFullTest, onlyOnline
+import pytest
+
+from torch_geometric.testing import onlyFullTest
 
 
-@onlyOnline
+@pytest.mark.dataset
 @onlyFullTest
 def test_ego_facebook_snap_dataset(get_dataset):
+    import warnings
+
+    import torch
+    from packaging import version
+
+    if version.parse(torch.__version__) >= version.parse("2.2.0"):
+        try:
+            from torch.serialization import add_safe_globals
+
+            from torch_geometric.datasets.snap_dataset import EgoData
+
+            add_safe_globals([EgoData])
+        except ImportError:
+            warnings.warn(
+                "add_safe_globals is expected but not found in "
+                "torch.serialization.", stacklevel=2)
+    else:
+        warnings.warn(
+            "add_safe_globals is not available in this version "
+            "of PyTorch; continuing without it.", stacklevel=2)
+
     dataset = get_dataset(name='ego-facebook')
     assert str(dataset) == 'SNAP-ego-facebook(10)'
     assert len(dataset) == 10
 
 
-@onlyOnline
+@pytest.mark.dataset
 @onlyFullTest
 def test_soc_slashdot_snap_dataset(get_dataset):
     dataset = get_dataset(name='soc-Slashdot0811')
@@ -17,7 +40,7 @@ def test_soc_slashdot_snap_dataset(get_dataset):
     assert len(dataset) == 1
 
 
-@onlyOnline
+@pytest.mark.dataset
 @onlyFullTest
 def test_wiki_vote_snap_dataset(get_dataset):
     dataset = get_dataset(name='wiki-vote')

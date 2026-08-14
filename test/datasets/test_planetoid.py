@@ -1,8 +1,11 @@
+import pytest
+
 from torch_geometric.loader import DataLoader
-from torch_geometric.testing import onlyOnline
+from torch_geometric.testing import withPackage
 
 
-@onlyOnline
+@pytest.mark.dataset
+@withPackage('scipy')
 def test_citeseer(get_dataset):
     dataset = get_dataset(name='CiteSeer')
     loader = DataLoader(dataset, batch_size=len(dataset))
@@ -30,7 +33,8 @@ def test_citeseer(get_dataset):
         assert batch.is_undirected()
 
 
-@onlyOnline
+@pytest.mark.dataset
+@withPackage('scipy')
 def test_citeseer_with_full_split(get_dataset):
     dataset = get_dataset(name='CiteSeer', split='full')
     data = dataset[0]
@@ -40,7 +44,8 @@ def test_citeseer_with_full_split(get_dataset):
     assert (data.train_mask & data.val_mask & data.test_mask).sum() == 0
 
 
-@onlyOnline
+@pytest.mark.dataset
+@withPackage('scipy')
 def test_citeseer_with_random_split(get_dataset):
     dataset = get_dataset(
         name='CiteSeer',

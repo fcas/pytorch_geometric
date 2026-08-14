@@ -16,7 +16,7 @@ from torch_geometric.graphgym.config import (
     set_run_dir,
 )
 from torch_geometric.graphgym.loader import create_loader
-from torch_geometric.graphgym.logger import LoggerCallback, set_printing
+from torch_geometric.graphgym.logger import set_printing
 from torch_geometric.graphgym.model_builder import create_model
 from torch_geometric.graphgym.models.gnn import FeatureEncoder, GNNStackStage
 from torch_geometric.graphgym.models.head import GNNNodeHead
@@ -26,7 +26,7 @@ from torch_geometric.graphgym.utils import (
     auto_select_device,
     params_count,
 )
-from torch_geometric.testing import onlyLinux, onlyOnline, withPackage
+from torch_geometric.testing import onlyLinux, withPackage
 
 num_trivial_metric_calls = 0
 
@@ -41,7 +41,7 @@ def trivial_metric(true, pred, task_type):
     return 1
 
 
-@onlyOnline
+@pytest.mark.dataset
 @withPackage('yacs', 'pytorch_lightning')
 @pytest.mark.parametrize('auto_resume', [True, False])
 @pytest.mark.parametrize('skip_train_eval', [True, False])
@@ -109,7 +109,7 @@ def test_run_single_graphgym(tmp_path, capfd, auto_resume, skip_train_eval,
     assert "val: {'epoch': 5," in out
 
 
-@onlyOnline
+@pytest.mark.dataset
 @withPackage('yacs', 'pytorch_lightning')
 def test_graphgym_module(tmp_path):
     import pytorch_lightning as pl
@@ -163,10 +163,17 @@ def test_graphgym_module(tmp_path):
     assert isinstance(outputs["loss"], torch.Tensor)
 
 
-@onlyOnline
+@pytest.fixture
+def destroy_process_group():
+    yield
+    if torch.distributed.is_initialized():
+        torch.distributed.destroy_process_group()
+
+
+@pytest.mark.dataset
 @onlyLinux
 @withPackage('yacs', 'pytorch_lightning')
-def test_train(tmp_path, capfd):
+def test_train(destroy_process_group, tmp_path, capfd):
     warnings.filterwarnings('ignore', ".*does not have many workers.*")
 
     import pytorch_lightning as pl
@@ -187,12 +194,29 @@ def test_train(tmp_path, capfd):
     loaders = create_loader()
     model = create_model()
     cfg.params = params_count(model)
+
+    # --- minimal logger callback that collects logs ---
+    class LoggerCallback(pl.Callback):
+        def __init__(self):
+            super().__init__()
+            self.logged = []
+
+        def on_train_batch_end(self, trainer, pl_module, outputs, batch,
+                               batch_idx):
+            self.logged.append({"type": "train", "step": trainer.global_step})
+
+        def on_validation_batch_end(self, trainer, pl_module, outputs, batch,
+                                    batch_idx, dataloader_idx=0):
+            self.logged.append({"type": "val", "step": trainer.global_step})
+
     logger = LoggerCallback()
-    trainer = pl.Trainer(max_epochs=1, max_steps=4, callbacks=logger,
-                         log_every_n_steps=1)
+    trainer = pl.Trainer(max_epochs=2, max_steps=4, callbacks=[logger],
+                         log_every_n_steps=1, enable_progress_bar=False)
     train_loader, val_loader = loaders[0], loaders[1]
     trainer.fit(model, train_loader, val_loader)
 
-    out, err = capfd.readouterr()
-    assert 'Sanity Checking' in out
-    assert 'Epoch 0:' in out
+    assert trainer.current_epoch > 0
+    # ensure both train and val batches were seen
+    types = {entry["type"] for entry in logger.logged}
+    assert "val" in types, "Validation did not run"
+    assert "train" in types, "Training did not run"

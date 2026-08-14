@@ -76,7 +76,7 @@ For this, an :obj:`index` vector defines the mapping from input elements to thei
 
 Notably, all aggregations share the same set of forward arguments, as described in detail in the :class:`torch_geometric.nn.aggr.Aggregation` base class.
 
-Each of the provided aggregations can be used within :class:`~torch_geometric.nn.conv.MessagePassing` as well as for hierachical/global pooling to obtain graph-level representations:
+Each of the provided aggregations can be used within :class:`~torch_geometric.nn.conv.MessagePassing` as well as for hierarchical/global pooling to obtain graph-level representations:
 
 .. code-block:: python
 
@@ -101,7 +101,7 @@ Each of the provided aggregations can be used within :class:`~torch_geometric.nn
            self.global_pool = aggr.SortAggregation(k=4)
            self.classifier = torch.nn.Linear(...)
 
-        def foward(self, x, edge_index, batch):
+        def forward(self, x, edge_index, batch):
             x = self.conv(x, edge_index).relu()
             x = self.global_pool(x, batch)
             x = self.classifier(x)
@@ -129,7 +129,7 @@ Secondly, **multiple aggregations** can be combined and stacked via the :class:`
            super().__init__(aggr=aggr.MultiAggregation(
                ['mean', 'std', aggr.SoftmaxAggregation(learn=True)]))
 
-Importantly, :class:`~torch_geometric.nn.aggr.MultiAggregation` provides various options to combine the outputs of its underlying aggegations (*e.g.*, using concatenation, summation, attention, ...) via its :obj:`mode` argument.
+Importantly, :class:`~torch_geometric.nn.aggr.MultiAggregation` provides various options to combine the outputs of its underlying aggregations (*e.g.*, using concatenation, summation, attention, ...) via its :obj:`mode` argument.
 The default :obj:`mode` performs concatenation (:obj:`"cat"`).
 For combining via attention, we need to additionally specify the :obj:`in_channels` :obj:`out_channels`, and :obj:`num_heads`:
 
@@ -154,6 +154,20 @@ Finally, we added full support for customization of aggregations into the :class
    :toctree: ../generated
 
    {% for name in torch_geometric.nn.aggr.classes %}
+     {{ name }}
+   {% endfor %}
+
+Attention
+---------
+
+.. currentmodule:: torch_geometric.nn.attention
+
+.. autosummary::
+   :nosignatures:
+   :toctree: ../generated
+   :template: autosummary/nn.rst
+
+   {% for name in torch_geometric.nn.attention.classes %}
      {{ name }}
    {% endfor %}
 
@@ -226,10 +240,15 @@ KGE Models
 Encodings
 ---------
 
-.. automodule:: torch_geometric.nn.encoding
-   :members:
-   :undoc-members:
-   :exclude-members: training
+.. currentmodule:: torch_geometric.nn.encoding
+
+.. autosummary::
+   :nosignatures:
+   :toctree: ../generated
+
+   {% for name in torch_geometric.nn.encoding.classes %}
+     {{ name }}
+   {% endfor %}
 
 Functional
 ----------
@@ -284,6 +303,9 @@ Model Transformations
 
 DataParallel Layers
 -------------------
+
+.. warning::
+   :class:`~torch_geometric.nn.data_parallel.DataParallel` is deprecated. Please use :class:`torch.nn.parallel.DistributedDataParallel` instead.
 
 .. automodule:: torch_geometric.nn.data_parallel
    :members:

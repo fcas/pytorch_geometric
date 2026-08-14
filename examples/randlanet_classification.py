@@ -18,11 +18,11 @@ from torch_geometric.nn.aggr import MaxAggregation
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.pool import knn_graph
 from torch_geometric.nn.pool.decimation import decimation_indices
-from torch_geometric.typing import WITH_TORCH_CLUSTER
+from torch_geometric.typing import WITH_PYG_LIB
 from torch_geometric.utils import softmax
 
-if not WITH_TORCH_CLUSTER:
-    quit("This example requires 'torch-cluster'")
+if not WITH_PYG_LIB:
+    quit("This example requires 'pyg-lib>=0.6.0'")
 
 # Default activation and batch norm parameters used by RandLA-Net:
 lrelu02_kwargs = {'negative_slope': 0.2}
@@ -38,7 +38,7 @@ class SharedMLP(MLP):
         kwargs['act'] = kwargs.get('act', 'LeakyReLU')
         kwargs['act_kwargs'] = kwargs.get('act_kwargs', lrelu02_kwargs)
         # BatchNorm with 1 - 0.99 = 0.01 momentum
-        # and 1e-6 eps by defaut (tensorflow momentum != pytorch momentum)
+        # and 1e-6 eps by default (tensorflow momentum != pytorch momentum)
         kwargs['norm_kwargs'] = kwargs.get('norm_kwargs', bn099_kwargs)
         super().__init__(*args, **kwargs)
 
@@ -72,7 +72,7 @@ class LocalFeatureAggregation(MessagePassing):
             (Tensor): locSE weighted by feature attention scores.
 
         """
-        # Encode local neighboorhod structural information
+        # Encode local neighborhood structural information
         pos_diff = pos_j - pos_i
         distance = torch.sqrt((pos_diff * pos_diff).sum(1, keepdim=True))
         relative_infos = torch.cat([pos_i, pos_j, pos_diff, distance],

@@ -3,7 +3,6 @@ import os.path as osp
 from typing import Callable, List, Optional
 
 import numpy as np
-import scipy.sparse as sp
 import torch
 
 from torch_geometric.data import (
@@ -76,8 +75,8 @@ class UPFD(InMemoryDataset):
             (default: :obj:`False`)
     """
     file_ids = {
-        'politifact': '1KOmSrlGcC50PjkvRVbyb_WoWHVql06J-',
-        'gossipcop': '1VskhAQ92PrT4sWEKQ2v2-AJhEcpp4A81',
+        'politifact': '1toou2GO0agoY_OS54LaCWEECQfe93nuq',
+        'gossipcop': '1DkMAzC7XUUciAxsSujRJt3sq1MqaVI3g',
     }
 
     def __init__(
@@ -130,6 +129,8 @@ class UPFD(InMemoryDataset):
         os.remove(path)
 
     def process(self) -> None:
+        import scipy.sparse as sp
+
         x = sp.load_npz(
             osp.join(self.raw_dir, f'new_{self.feature}_feature.npz'))
         x = torch.from_numpy(x.todense()).to(torch.float)

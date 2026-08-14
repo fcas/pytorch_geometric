@@ -3,7 +3,7 @@ r"""Utility package."""
 import copy
 
 from ._scatter import scatter, group_argsort, group_cat
-from ._segment import segment
+from ._segment import segment, segment_logsumexp
 from ._index_sort import index_sort
 from .functions import cumsum
 from ._degree import degree
@@ -21,6 +21,7 @@ from ._subgraph import (get_num_hops, subgraph, k_hop_subgraph,
 from .dropout import dropout_adj, dropout_node, dropout_edge, dropout_path
 from ._homophily import homophily
 from ._assortativity import assortativity
+from ._normalize_edge_index import normalize_edge_index
 from .laplacian import get_laplacian
 from .mesh_laplacian import get_mesh_laplacian
 from .mask import mask_select, index_to_mask, mask_to_index
@@ -44,7 +45,7 @@ from .convert import to_networkit, from_networkit
 from .convert import to_trimesh, from_trimesh
 from .convert import to_cugraph, from_cugraph
 from .convert import to_dgl, from_dgl
-from .smiles import from_smiles, to_smiles
+from .smiles import from_rdmol, to_rdmol, from_smiles, to_smiles
 from .random import (erdos_renyi_graph, stochastic_blockmodel_graph,
                      barabasi_albert_graph)
 from ._negative_sampling import (negative_sampling, batched_negative_sampling,
@@ -52,16 +53,18 @@ from ._negative_sampling import (negative_sampling, batched_negative_sampling,
                                  structured_negative_sampling_feasible)
 from .augmentation import shuffle_node, mask_feature, add_random_edge
 from ._tree_decomposition import tree_decomposition
-from .embedding import get_embeddings
+from .embedding import get_embeddings, get_embeddings_hetero
 from ._trim_to_layer import trim_to_layer
 from .ppr import get_ppr
 from ._train_test_split_edges import train_test_split_edges
+from .influence import total_influence
 
 __all__ = [
     'scatter',
     'group_argsort',
     'group_cat',
     'segment',
+    'segment_logsumexp',
     'index_sort',
     'cumsum',
     'degree',
@@ -89,6 +92,7 @@ __all__ = [
     'dropout_adj',
     'homophily',
     'assortativity',
+    'normalize_edge_index',
     'get_laplacian',
     'get_mesh_laplacian',
     'mask_select',
@@ -127,6 +131,8 @@ __all__ = [
     'from_cugraph',
     'to_dgl',
     'from_dgl',
+    'from_rdmol',
+    'to_rdmol',
     'from_smiles',
     'to_smiles',
     'erdos_renyi_graph',
@@ -141,9 +147,11 @@ __all__ = [
     'add_random_edge',
     'tree_decomposition',
     'get_embeddings',
+    'get_embeddings_hetero',
     'trim_to_layer',
     'get_ppr',
     'train_test_split_edges',
+    'total_influence',
 ]
 
 # `structured_negative_sampling_feasible` is a long name and thus destroys the

@@ -1,4 +1,4 @@
-import pickle
+import io
 import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -111,15 +111,17 @@ class Database(ABC):
             for key, value in schema_dict.items()
         }
 
+    @abstractmethod
     def connect(self) -> None:
         r"""Connects to the database.
         Databases will automatically connect on instantiation.
         """
-        pass
+        raise NotImplementedError
 
+    @abstractmethod
     def close(self) -> None:
         r"""Closes the connection to the database."""
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def insert(self, index: int, data: Any) -> None:
@@ -498,7 +500,9 @@ class SQLiteDatabase(Database):
                 out.append(col)
 
             else:
-                out.append(pickle.dumps(col))
+                buffer = io.BytesIO()
+                torch.save(col, buffer)
+                out.append(buffer.getvalue())
 
         return out
 
@@ -561,7 +565,10 @@ class SQLiteDatabase(Database):
                 out_dict[key] = value
 
             else:
-                out_dict[key] = pickle.loads(value)
+                out_dict[key] = torch.load(
+                    io.BytesIO(value),
+                    weights_only=False,
+                )
 
         # In case `0` exists as integer in the schema, this means that the
         # schema was passed as either a single entry or a tuple:
@@ -646,7 +653,12 @@ class RocksDatabase(Database):
         # Ensure that data is not a view of a larger tensor:
         if isinstance(row, Tensor):
             row = row.clone()
-        return pickle.dumps(row)
+        buffer = io.BytesIO()
+        torch.save(row, buffer)
+        return buffer.getvalue()
 
     def _deserialize(self, row: bytes) -> Any:
-        return pickle.loads(row)
+        return torch.load(
+            io.BytesIO(row),
+            weights_only=False,
+        )

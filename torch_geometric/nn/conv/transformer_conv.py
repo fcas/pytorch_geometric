@@ -126,9 +126,11 @@ class TransformerConv(MessagePassing):
         if isinstance(in_channels, int):
             in_channels = (in_channels, in_channels)
 
-        self.lin_key = Linear(in_channels[0], heads * out_channels)
-        self.lin_query = Linear(in_channels[1], heads * out_channels)
-        self.lin_value = Linear(in_channels[0], heads * out_channels)
+        self.lin_key = Linear(in_channels[0], heads * out_channels, bias=bias)
+        self.lin_query = Linear(in_channels[1], heads * out_channels,
+                                bias=bias)
+        self.lin_value = Linear(in_channels[0], heads * out_channels,
+                                bias=bias)
         if edge_dim is not None:
             self.lin_edge = Linear(edge_dim, heads * out_channels, bias=False)
         else:
@@ -210,10 +212,13 @@ class TransformerConv(MessagePassing):
             edge_index (torch.Tensor or SparseTensor): The edge indices.
             edge_attr (torch.Tensor, optional): The edge features.
                 (default: :obj:`None`)
-            return_attention_weights (bool, optional): If set to :obj:`True`,
-                will additionally return the tuple
-                :obj:`(edge_index, attention_weights)`, holding the computed
-                attention weights for each edge. (default: :obj:`None`)
+            return_attention_weights (bool, optional):
+                Will additionally return the tuple
+                :obj:`(edge_index, attention_weights)` whenever it is set to
+                a value, regardless of its actual value
+                (might be `True` or `False`), holding the computed attention
+                weights for each edge.
+                (default: :obj:`None`)
         """
         H, C = self.heads, self.out_channels
 

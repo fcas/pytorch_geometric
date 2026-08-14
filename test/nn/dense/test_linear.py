@@ -103,11 +103,7 @@ def test_identical_linear_default_initialization(lazy):
 
 def test_copy_unintialized_parameter():
     weight = UninitializedParameter()
-    if torch_geometric.typing.WITH_PT113:
-        copy.deepcopy(weight)
-    else:  # PyTorch <= 1.12
-        with pytest.raises(Exception):
-            copy.deepcopy(weight)
+    copy.deepcopy(weight)
 
 
 @withDevice
@@ -174,7 +170,7 @@ def test_hetero_linear_amp(device, use_segment_matmul):
 
     lin = HeteroLinear(16, 32, num_types=3).to(device)
 
-    with torch.cuda.amp.autocast():
+    with torch.amp.autocast('cuda'):
         assert lin(x, type_vec).size() == (3, 32)
 
     torch_geometric.backend.use_segment_matmul = old_state

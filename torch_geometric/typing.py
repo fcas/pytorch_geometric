@@ -1,9 +1,9 @@
+import importlib.util
 import inspect
 import os
-import sys
 import typing
 import warnings
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, TypeAlias, Union
 
 import numpy as np
 import torch
@@ -14,8 +14,14 @@ WITH_PT21 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 1
 WITH_PT22 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 2
 WITH_PT23 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 3
 WITH_PT24 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 4
-WITH_PT111 = WITH_PT20 or int(torch.__version__.split('.')[1]) >= 11
-WITH_PT112 = WITH_PT20 or int(torch.__version__.split('.')[1]) >= 12
+WITH_PT25 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 5
+WITH_PT26 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 6
+WITH_PT27 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 7
+WITH_PT28 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 8
+WITH_PT29 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 9
+WITH_PT210 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 10
+WITH_PT211 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 11
+WITH_PT212 = WITH_PT20 and int(torch.__version__.split('.')[1]) >= 12
 WITH_PT113 = WITH_PT20 or int(torch.__version__.split('.')[1]) >= 13
 
 WITH_WINDOWS = os.name == 'nt'
@@ -41,7 +47,8 @@ try:
     WITH_PYG_LIB = True
     WITH_GMM = WITH_PT20 and hasattr(pyg_lib.ops, 'grouped_matmul')
     WITH_SEGMM = hasattr(pyg_lib.ops, 'segment_matmul')
-    if WITH_SEGMM and 'pytest' in sys.modules and torch.cuda.is_available():
+    if (WITH_SEGMM and 'PYTEST_CURRENT_TEST' in os.environ
+            and torch.cuda.is_available()):
         # NOTE `segment_matmul` is currently bugged on older NVIDIA cards which
         # let our GPU tests on CI crash. Try if this error is present on the
         # current GPU and disable `WITH_SEGMM`/`WITH_GMM` if necessary.
@@ -55,6 +62,13 @@ try:
             WITH_GMM = False
             WITH_SEGMM = False
     WITH_SAMPLED_OP = hasattr(pyg_lib.ops, 'sampled_add')
+    WITH_SPLINE = hasattr(pyg_lib.ops, 'spline_basis')
+    WITH_GRID_CLUSTER = hasattr(pyg_lib.ops, 'grid_cluster')
+    WITH_GRACLUS = hasattr(pyg_lib.ops, 'graclus_cluster')
+    WITH_FPS = hasattr(pyg_lib.ops, 'fps')
+    WITH_KNN = hasattr(pyg_lib.ops, 'knn')
+    WITH_RADIUS = hasattr(pyg_lib.ops, 'radius')
+    WITH_NEAREST = hasattr(pyg_lib.ops, 'nearest')
     WITH_SOFTMAX = hasattr(pyg_lib.ops, 'softmax_csr')
     WITH_INDEX_SORT = hasattr(pyg_lib.ops, 'index_sort')
     WITH_METIS = hasattr(pyg_lib, 'partition')
@@ -62,57 +76,91 @@ try:
         pyg_lib.sampler.neighbor_sample).parameters)
     WITH_WEIGHTED_NEIGHBOR_SAMPLE = ('edge_weight' in inspect.signature(
         pyg_lib.sampler.neighbor_sample).parameters)
+    try:
+        torch.classes.pyg.CPUHashMap  # noqa: B018
+        WITH_CPU_HASH_MAP = True
+    except Exception:
+        WITH_CPU_HASH_MAP = False
+    try:
+        torch.classes.pyg.CUDAHashMap  # noqa: B018
+        WITH_CUDA_HASH_MAP = True
+    except Exception:
+        WITH_CUDA_HASH_MAP = False
 except Exception as e:
     if not isinstance(e, ImportError):  # pragma: no cover
-        warnings.warn(f"An issue occurred while importing 'pyg-lib'. "
-                      f"Disabling its usage. Stacktrace: {e}")
+        warnings.warn(
+            f"An issue occurred while importing 'pyg-lib'. "
+            f"Disabling its usage. Stacktrace: {e}", stacklevel=2)
     pyg_lib = object
     WITH_PYG_LIB = False
     WITH_GMM = False
     WITH_SEGMM = False
     WITH_SAMPLED_OP = False
+    WITH_SPLINE = False
+    WITH_GRID_CLUSTER = False
+    WITH_GRACLUS = False
+    WITH_FPS = False
+    WITH_KNN = False
+    WITH_RADIUS = False
+    WITH_NEAREST = False
     WITH_SOFTMAX = False
     WITH_INDEX_SORT = False
     WITH_METIS = False
     WITH_EDGE_TIME_NEIGHBOR_SAMPLE = False
     WITH_WEIGHTED_NEIGHBOR_SAMPLE = False
+    WITH_CPU_HASH_MAP = False
+    WITH_CUDA_HASH_MAP = False
+
+if WITH_CPU_HASH_MAP:
+    CPUHashMap: TypeAlias = torch.classes.pyg.CPUHashMap  # type: ignore[name-defined]  # noqa: E501
+else:
+
+    class CPUHashMap:  # type: ignore
+        def __init__(self, key: Tensor) -> None:
+            raise ImportError("'CPUHashMap' requires 'pyg-lib'")
+
+        def get(self, query: Tensor) -> Tensor:
+            raise ImportError("'CPUHashMap' requires 'pyg-lib'")
+
+
+if WITH_CUDA_HASH_MAP:
+    CUDAHashMap: TypeAlias = torch.classes.pyg.CUDAHashMap  # type: ignore[name-defined]  # noqa: E501
+else:
+
+    class CUDAHashMap:  # type: ignore
+        def __init__(self, key: Tensor) -> None:
+            raise ImportError("'CUDAHashMap' requires 'pyg-lib'")
+
+        def get(self, query: Tensor) -> Tensor:
+            raise ImportError("'CUDAHashMap' requires 'pyg-lib'")
+
 
 try:
     import torch_scatter  # noqa
     WITH_TORCH_SCATTER = True
 except Exception as e:
     if not isinstance(e, ImportError):  # pragma: no cover
-        warnings.warn(f"An issue occurred while importing 'torch-scatter'. "
-                      f"Disabling its usage. Stacktrace: {e}")
+        warnings.warn(
+            f"An issue occurred while importing 'torch-scatter'. "
+            f"Disabling its usage. Stacktrace: {e}", stacklevel=2)
     torch_scatter = object
     WITH_TORCH_SCATTER = False
 
-try:
-    import torch_cluster  # noqa
-    WITH_TORCH_CLUSTER = True
-    WITH_TORCH_CLUSTER_BATCH_SIZE = 'batch_size' in torch_cluster.knn.__doc__
-except Exception as e:
-    if not isinstance(e, ImportError):  # pragma: no cover
-        warnings.warn(f"An issue occurred while importing 'torch-cluster'. "
-                      f"Disabling its usage. Stacktrace: {e}")
-    WITH_TORCH_CLUSTER = False
-    WITH_TORCH_CLUSTER_BATCH_SIZE = False
+if importlib.util.find_spec('torch_cluster') is not None:
+    warnings.warn(
+        "'torch-cluster' is no longer necessary and is being ignored. "
+        "Its functionality has been migrated to 'pyg-lib>=0.6.0'.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
-    class TorchCluster:
-        def __getattr__(self, key: str) -> Any:
-            raise ImportError(f"'{key}' requires 'torch-cluster'")
-
-    torch_cluster = TorchCluster()
-
-try:
-    import torch_spline_conv  # noqa
-    WITH_TORCH_SPLINE_CONV = True
-except Exception as e:
-    if not isinstance(e, ImportError):  # pragma: no cover
-        warnings.warn(
-            f"An issue occurred while importing 'torch-spline-conv'. "
-            f"Disabling its usage. Stacktrace: {e}")
-    WITH_TORCH_SPLINE_CONV = False
+if importlib.util.find_spec('torch_spline_conv') is not None:
+    warnings.warn(
+        "'torch-spline-conv' is no longer necessary and is being ignored. "
+        "Its functionality has been migrated to 'pyg-lib>=0.6.0'.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
 try:
     import torch_sparse  # noqa
@@ -120,8 +168,9 @@ try:
     WITH_TORCH_SPARSE = True
 except Exception as e:
     if not isinstance(e, ImportError):  # pragma: no cover
-        warnings.warn(f"An issue occurred while importing 'torch-sparse'. "
-                      f"Disabling its usage. Stacktrace: {e}")
+        warnings.warn(
+            f"An issue occurred while importing 'torch-sparse'. "
+            f"Disabling its usage. Stacktrace: {e}", stacklevel=2)
     WITH_TORCH_SPARSE = False
 
     class SparseStorage:  # type: ignore
@@ -305,6 +354,8 @@ class EdgeTypeStr(str):
     r"""A helper class to construct serializable edge types by merging an edge
     type tuple into a single string.
     """
+    edge_type: tuple[str, str, str]
+
     def __new__(cls, *args: Any) -> 'EdgeTypeStr':
         if isinstance(args[0], (list, tuple)):
             # Unwrap `EdgeType((src, rel, dst))` and `EdgeTypeStr((src, dst))`:
@@ -312,27 +363,37 @@ class EdgeTypeStr(str):
 
         if len(args) == 1 and isinstance(args[0], str):
             arg = args[0]  # An edge type string was passed.
+            edge_type = tuple(arg.split(EDGE_TYPE_STR_SPLIT))
+            if len(edge_type) != 3:
+                raise ValueError(f"Cannot convert the edge type '{arg}' to a "
+                                 f"tuple since it holds invalid characters")
 
         elif len(args) == 2 and all(isinstance(arg, str) for arg in args):
             # A `(src, dst)` edge type was passed - add `DEFAULT_REL`:
-            arg = EDGE_TYPE_STR_SPLIT.join((args[0], DEFAULT_REL, args[1]))
+            edge_type = (args[0], DEFAULT_REL, args[1])
+            arg = EDGE_TYPE_STR_SPLIT.join(edge_type)
 
         elif len(args) == 3 and all(isinstance(arg, str) for arg in args):
             # A `(src, rel, dst)` edge type was passed:
+            edge_type = tuple(args)
             arg = EDGE_TYPE_STR_SPLIT.join(args)
 
         else:
             raise ValueError(f"Encountered invalid edge type '{args}'")
 
-        return str.__new__(cls, arg)
+        out = str.__new__(cls, arg)
+        out.edge_type = edge_type  # type: ignore
+        return out
 
     def to_tuple(self) -> EdgeType:
         r"""Returns the original edge type."""
-        out = tuple(self.split(EDGE_TYPE_STR_SPLIT))
-        if len(out) != 3:
+        if len(self.edge_type) != 3:
             raise ValueError(f"Cannot convert the edge type '{self}' to a "
                              f"tuple since it holds invalid characters")
-        return out
+        return self.edge_type
+
+    def __reduce__(self) -> tuple[Any, Any]:
+        return (self.__class__, (self.edge_type, ))
 
 
 # There exist some short-cuts to query edge-types (given that the full triplet
@@ -370,3 +431,14 @@ MaybeHeteroEdgeTensor = Union[Tensor, Dict[EdgeType, Tensor]]
 
 InputNodes = Union[OptTensor, NodeType, Tuple[NodeType, OptTensor]]
 InputEdges = Union[OptTensor, EdgeType, Tuple[EdgeType, OptTensor]]
+
+# Serialization ###############################################################
+
+if WITH_PT24:
+    torch.serialization.add_safe_globals([
+        SparseTensor,
+        SparseStorage,
+        TensorFrame,
+        MockTorchCSCTensor,
+        EdgeTypeStr,
+    ])

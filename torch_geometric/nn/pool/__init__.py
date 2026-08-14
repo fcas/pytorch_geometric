@@ -2,25 +2,40 @@ r"""Pooling package."""
 
 import warnings
 from typing import Optional
+
+import torch
 from torch import Tensor
 
 import torch_geometric.typing
-from torch_geometric.typing import OptTensor, torch_cluster
+from torch_geometric.index import index2ptr
+from torch_geometric.typing import OptTensor
 
-from .asap import ASAPooling
 from .avg_pool import avg_pool, avg_pool_neighbor_x, avg_pool_x
-from .edge_pool import EdgePooling
 from .glob import global_add_pool, global_max_pool, global_mean_pool
 from .knn import (KNNIndex, L2KNNIndex, MIPSKNNIndex, ApproxL2KNNIndex,
                   ApproxMIPSKNNIndex)
 from .graclus import graclus
 from .max_pool import max_pool, max_pool_neighbor_x, max_pool_x
-from .mem_pool import MemPooling
-from .pan_pool import PANPooling
-from .sag_pool import SAGPooling
 from .topk_pool import TopKPooling
+from .sag_pool import SAGPooling
+from .edge_pool import EdgePooling
+from .cluster_pool import ClusterPooling
+from .asap import ASAPooling
+from .pan_pool import PANPooling
+from .mem_pool import MemPooling
 from .voxel_grid import voxel_grid
 from .approx_knn import approx_knn, approx_knn_graph
+
+
+def _batch_to_ptr(
+    batch: OptTensor,
+    batch_size: Optional[int] = None,
+) -> OptTensor:
+    if batch is None:
+        return None
+    if batch_size is None:
+        batch_size = int(batch.max()) + 1 if batch.numel() > 0 else 0
+    return index2ptr(batch, batch_size)
 
 
 def fps(
@@ -58,9 +73,16 @@ def fps(
 
     :rtype: :class:`torch.Tensor`
     """
-    if not torch_geometric.typing.WITH_TORCH_CLUSTER_BATCH_SIZE:
-        return torch_cluster.fps(x, batch, ratio, random_start)
-    return torch_cluster.fps(x, batch, ratio, random_start, batch_size)
+    if not torch_geometric.typing.WITH_FPS:
+        raise ImportError("'fps' requires 'pyg-lib>=0.6.0'")
+
+    if batch is None:
+        ptr = torch.tensor([0, x.size(0)], device=x.device, dtype=torch.long)
+    else:
+        ptr = _batch_to_ptr(batch, batch_size)
+
+    src = x.view(x.size(0), -1) if x.dim() > 2 else x
+    return torch.ops.pyg.fps(src, ptr, ratio, random_start)
 
 
 def knn(
@@ -110,11 +132,12 @@ def knn(
 
     :rtype: :class:`torch.Tensor`
     """
-    if not torch_geometric.typing.WITH_TORCH_CLUSTER_BATCH_SIZE:
-        return torch_cluster.knn(x, y, k, batch_x, batch_y, cosine,
-                                 num_workers)
-    return torch_cluster.knn(x, y, k, batch_x, batch_y, cosine, num_workers,
-                             batch_size)
+    if not torch_geometric.typing.WITH_KNN:
+        raise ImportError("'knn' requires 'pyg-lib>=0.6.0'")
+
+    ptr_x = _batch_to_ptr(batch_x, batch_size)
+    ptr_y = _batch_to_ptr(batch_y, batch_size)
+    return torch.ops.pyg.knn(x, y, ptr_x, ptr_y, k, cosine, num_workers)
 
 
 def knn_graph(
@@ -161,16 +184,24 @@ def knn_graph(
 
     :rtype: :class:`torch.Tensor`
     """
+    if not torch_geometric.typing.WITH_KNN:
+        raise ImportError("'knn_graph' requires 'pyg-lib>=0.6.0'")
+
     if batch is not None and x.device != batch.device:
-        warnings.warn("Input tensor 'x' and 'batch' are on different devices "
-                      "in 'knn_graph'. Performing blocking device transfer")
+        warnings.warn(
+            "Input tensor 'x' and 'batch' are on different devices "
+            "in 'knn_graph'. Performing blocking device transfer",
+            stacklevel=2)
         batch = batch.to(x.device)
 
-    if not torch_geometric.typing.WITH_TORCH_CLUSTER_BATCH_SIZE:
-        return torch_cluster.knn_graph(x, k, batch, loop, flow, cosine,
-                                       num_workers)
-    return torch_cluster.knn_graph(x, k, batch, loop, flow, cosine,
-                                   num_workers, batch_size)
+    assert flow in ['source_to_target', 'target_to_source']
+    ptr = _batch_to_ptr(batch, batch_size)
+    edge_index = torch.ops.pyg.knn(x, x, ptr, ptr, k if loop else k + 1,
+                                   cosine, num_workers)
+    if not loop:
+        mask = edge_index[0] != edge_index[1]
+        edge_index = edge_index[:, mask]
+    return edge_index.flip([0]) if flow == 'source_to_target' else edge_index
 
 
 def radius(
@@ -226,11 +257,13 @@ def radius(
         Consider setting :obj:`max_num_neighbors` to :obj:`None` or moving
         inputs to GPU before proceeding.
     """
-    if not torch_geometric.typing.WITH_TORCH_CLUSTER_BATCH_SIZE:
-        return torch_cluster.radius(x, y, r, batch_x, batch_y,
-                                    max_num_neighbors, num_workers)
-    return torch_cluster.radius(x, y, r, batch_x, batch_y, max_num_neighbors,
-                                num_workers, batch_size)
+    if not torch_geometric.typing.WITH_RADIUS:
+        raise ImportError("'radius' requires 'pyg-lib>=0.6.0'")
+
+    ptr_x = _batch_to_ptr(batch_x, batch_size)
+    ptr_y = _batch_to_ptr(batch_y, batch_size)
+    return torch.ops.pyg.radius(x, y, ptr_x, ptr_y, r, max_num_neighbors,
+                                num_workers, False)
 
 
 def radius_graph(
@@ -283,16 +316,21 @@ def radius_graph(
         Consider setting :obj:`max_num_neighbors` to :obj:`None` or moving
         inputs to GPU before proceeding.
     """
+    if not torch_geometric.typing.WITH_RADIUS:
+        raise ImportError("'radius_graph' requires 'pyg-lib>=0.6.0'")
+
     if batch is not None and x.device != batch.device:
-        warnings.warn("Input tensor 'x' and 'batch' are on different devices "
-                      "in 'radius_graph'. Performing blocking device transfer")
+        warnings.warn(
+            "Input tensor 'x' and 'batch' are on different devices "
+            "in 'radius_graph'. Performing blocking device transfer",
+            stacklevel=2)
         batch = batch.to(x.device)
 
-    if not torch_geometric.typing.WITH_TORCH_CLUSTER_BATCH_SIZE:
-        return torch_cluster.radius_graph(x, r, batch, loop, max_num_neighbors,
-                                          flow, num_workers)
-    return torch_cluster.radius_graph(x, r, batch, loop, max_num_neighbors,
-                                      flow, num_workers, batch_size)
+    assert flow in ['source_to_target', 'target_to_source']
+    ptr = _batch_to_ptr(batch, batch_size)
+    edge_index = torch.ops.pyg.radius(x, x, ptr, ptr, r, max_num_neighbors,
+                                      num_workers, not loop)
+    return edge_index.flip([0]) if flow == 'source_to_target' else edge_index
 
 
 def nearest(
@@ -329,7 +367,12 @@ def nearest(
 
     :rtype: :class:`torch.Tensor`
     """
-    return torch_cluster.nearest(x, y, batch_x, batch_y)
+    if not torch_geometric.typing.WITH_NEAREST:
+        raise ImportError("'nearest' requires 'pyg-lib>=0.6.0'")
+
+    ptr_x = _batch_to_ptr(batch_x)
+    ptr_y = _batch_to_ptr(batch_y)
+    return torch.ops.pyg.nearest(x, y, ptr_x, ptr_y)
 
 
 __all__ = [
@@ -344,6 +387,7 @@ __all__ = [
     'TopKPooling',
     'SAGPooling',
     'EdgePooling',
+    'ClusterPooling',
     'ASAPooling',
     'PANPooling',
     'MemPooling',

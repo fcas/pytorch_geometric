@@ -41,8 +41,7 @@ class GATv2Conv(MessagePassing):
     In contrast, in :class:`GATv2`, every node can attend to any other node.
 
     .. math::
-        \mathbf{x}^{\prime}_i = \alpha_{i,i}\mathbf{\Theta}_{s}\mathbf{x}_{i} +
-        \sum_{j \in \mathcal{N}(i)}
+        \mathbf{x}^{\prime}_i = \sum_{j \in \mathcal{N}(i) \cup \{ i \}}
         \alpha_{i,j}\mathbf{\Theta}_{t}\mathbf{x}_{j},
 
     where the attention coefficients :math:`\alpha_{i,j}` are computed as
@@ -111,6 +110,8 @@ class GATv2Conv(MessagePassing):
             will be applied to the source and the target node of every edge,
             *i.e.* :math:`\mathbf{\Theta}_{s} = \mathbf{\Theta}_{t}`.
             (default: :obj:`False`)
+        residual (bool, optional): If set to :obj:`True`, the layer will add
+            a learnable skip-connection. (default: :obj:`False`)
         **kwargs (optional): Additional arguments of
             :class:`torch_geometric.nn.conv.MessagePassing`.
 
@@ -142,6 +143,7 @@ class GATv2Conv(MessagePassing):
         fill_value: Union[float, Tensor, str] = 'mean',
         bias: bool = True,
         share_weights: bool = False,
+        residual: bool = False,
         **kwargs,
     ):
         super().__init__(node_dim=0, **kwargs)
@@ -155,6 +157,7 @@ class GATv2Conv(MessagePassing):
         self.add_self_loops = add_self_loops
         self.edge_dim = edge_dim
         self.fill_value = fill_value
+        self.residual = residual
         self.share_weights = share_weights
 
         if isinstance(in_channels, int):
@@ -182,10 +185,22 @@ class GATv2Conv(MessagePassing):
         else:
             self.lin_edge = None
 
-        if bias and concat:
-            self.bias = Parameter(torch.empty(heads * out_channels))
-        elif bias and not concat:
-            self.bias = Parameter(torch.empty(out_channels))
+        # The number of output channels:
+        total_out_channels = out_channels * (heads if concat else 1)
+
+        if residual:
+            self.res = Linear(
+                in_channels
+                if isinstance(in_channels, int) else in_channels[1],
+                total_out_channels,
+                bias=False,
+                weight_initializer='glorot',
+            )
+        else:
+            self.register_parameter('res', None)
+
+        if bias:
+            self.bias = Parameter(torch.empty(total_out_channels))
         else:
             self.register_parameter('bias', None)
 
@@ -197,6 +212,8 @@ class GATv2Conv(MessagePassing):
         self.lin_r.reset_parameters()
         if self.lin_edge is not None:
             self.lin_edge.reset_parameters()
+        if self.res is not None:
+            self.res.reset_parameters()
         glorot(self.att)
         zeros(self.bias)
 
@@ -249,17 +266,26 @@ class GATv2Conv(MessagePassing):
             edge_index (torch.Tensor or SparseTensor): The edge indices.
             edge_attr (torch.Tensor, optional): The edge features.
                 (default: :obj:`None`)
-            return_attention_weights (bool, optional): If set to :obj:`True`,
-                will additionally return the tuple
-                :obj:`(edge_index, attention_weights)`, holding the computed
-                attention weights for each edge. (default: :obj:`None`)
+            return_attention_weights (bool, optional):
+                Will additionally return the tuple
+                :obj:`(edge_index, attention_weights)` whenever it is set to
+                a value, regardless of its actual value
+                (might be `True` or `False`), holding the computed attention
+                weights for each edge.
+                (default: :obj:`None`)
         """
         H, C = self.heads, self.out_channels
+
+        res: Optional[Tensor] = None
 
         x_l: OptTensor = None
         x_r: OptTensor = None
         if isinstance(x, Tensor):
             assert x.dim() == 2
+
+            if self.res is not None:
+                res = self.res(x)
+
             x_l = self.lin_l(x).view(-1, H, C)
             if self.share_weights:
                 x_r = x_l
@@ -268,6 +294,10 @@ class GATv2Conv(MessagePassing):
         else:
             x_l, x_r = x[0], x[1]
             assert x[0].dim() == 2
+
+            if x_r is not None and self.res is not None:
+                res = self.res(x_r)
+
             x_l = self.lin_l(x_l).view(-1, H, C)
             if x_r is not None:
                 x_r = self.lin_r(x_r).view(-1, H, C)
@@ -306,10 +336,13 @@ class GATv2Conv(MessagePassing):
         else:
             out = out.mean(dim=1)
 
+        if res is not None:
+            out = out + res
+
         if self.bias is not None:
             out = out + self.bias
 
-        if isinstance(return_attention_weights, bool):
+        if return_attention_weights:
             if isinstance(edge_index, Tensor):
                 if is_torch_sparse_tensor(edge_index):
                     # TODO TorchScript requires to return a tuple
@@ -319,8 +352,8 @@ class GATv2Conv(MessagePassing):
                     return out, (edge_index, alpha)
             elif isinstance(edge_index, SparseTensor):
                 return out, edge_index.set_value(alpha, layout='coo')
-        else:
-            return out
+
+        return out
 
     def edge_update(self, x_j: Tensor, x_i: Tensor, edge_attr: OptTensor,
                     index: Tensor, ptr: OptTensor,

@@ -17,6 +17,7 @@ from typing import (
     overload,
 )
 
+import numpy as np
 import torch
 import torch.utils._pytree as pytree
 from torch import Tensor
@@ -173,7 +174,7 @@ class EdgeIndex(Tensor):
     :meth:`EdgeIndex.fill_cache_`, and are maintained and adjusted over its
     lifespan (*e.g.*, when calling :meth:`EdgeIndex.flip`).
 
-    This representation ensures for optimal computation in GNN message passing
+    This representation ensures optimal computation in GNN message passing
     schemes, while preserving the ease-of-use of regular COO-based :pyg:`PyG`
     workflows.
 
@@ -183,7 +184,7 @@ class EdgeIndex(Tensor):
 
         edge_index = EdgeIndex(
             [[0, 1, 1, 2],
-             [1, 0, 2, 1]]
+             [1, 0, 2, 1]],
             sparse_size=(3, 3),
             sort_order='row',
             is_undirected=True,
@@ -210,7 +211,7 @@ class EdgeIndex(Tensor):
         assert not edge_index.is_undirected
 
         # Sparse-Dense Matrix Multiplication:
-        out = edge_index.flip(0) @ torch.randn(3, 16)
+        out = edge_index.flip(0) @ torch.randn(3, 16)
         assert out.size() == (3, 16)
     """
     # See "https://pytorch.org/docs/stable/notes/extending.html"
@@ -297,8 +298,7 @@ class EdgeIndex(Tensor):
                 indptr = None
             data = torch.stack([row, col], dim=0)
 
-        if (torch_geometric.typing.WITH_PT112
-                and data.layout == torch.sparse_csc):
+        if data.layout == torch.sparse_csc:
             row = data.row_indices()
             indptr = data.ccol_indices()
 
@@ -325,7 +325,7 @@ class EdgeIndex(Tensor):
             elif sparse_size[0] is None and sparse_size[1] is not None:
                 sparse_size = (sparse_size[1], sparse_size[1])
 
-        out = Tensor._make_wrapper_subclass(  # type: ignore
+        out = Tensor._make_wrapper_subclass(
             cls,
             size=data.size(),
             strides=data.stride(),
@@ -803,7 +803,7 @@ class EdgeIndex(Tensor):
 
         size = self.get_sparse_size()
         if value is not None and value.dim() > 1:
-            size = size + value.size()[1:]  # type: ignore
+            size = size + value.size()[1:]
 
         out = torch.full(size, fill_value, dtype=dtype, device=self.device)
         out[self._data[0], self._data[1]] = value if value is not None else 1
@@ -820,18 +820,27 @@ class EdgeIndex(Tensor):
                 :obj:`1.0`. (default: :obj:`None`)
         """
         value = self._get_value() if value is None else value
-        out = torch.sparse_coo_tensor(
+
+        if not torch_geometric.typing.WITH_PT21:
+            out = torch.sparse_coo_tensor(
+                indices=self._data,
+                values=value,
+                size=self.get_sparse_size(),
+                device=self.device,
+                requires_grad=value.requires_grad,
+            )
+            if self.is_sorted_by_row:
+                out = out._coalesced_(True)
+            return out
+
+        return torch.sparse_coo_tensor(
             indices=self._data,
             values=value,
             size=self.get_sparse_size(),
             device=self.device,
             requires_grad=value.requires_grad,
+            is_coalesced=True if self.is_sorted_by_row else None,
         )
-
-        if self.is_sorted_by_row:
-            out = out._coalesced_(True)
-
-        return out
 
     def to_sparse_csr(  # type: ignore
             self,
@@ -872,10 +881,6 @@ class EdgeIndex(Tensor):
                 If not specified, non-zero elements will be assigned a value of
                 :obj:`1.0`. (default: :obj:`None`)
         """
-        if not torch_geometric.typing.WITH_PT112:
-            raise NotImplementedError(
-                "'to_sparse_csc' not supported for PyTorch < 1.12")
-
         (colptr, row), perm = self.get_csc()
         if value is not None and perm is not None:
             value = value[perm]
@@ -912,7 +917,7 @@ class EdgeIndex(Tensor):
             return self.to_sparse_coo(value)
         if layout == torch.sparse_csr:
             return self.to_sparse_csr(value)
-        if torch_geometric.typing.WITH_PT112 and layout == torch.sparse_csc:
+        if layout == torch.sparse_csc:
             return self.to_sparse_csc(value)
 
         raise ValueError(f"Unexpected tensor layout (got '{layout}')")
@@ -1181,10 +1186,10 @@ class EdgeIndex(Tensor):
         return edge_index
 
     # Prevent auto-wrapping outputs back into the proper subclass type:
-    __torch_function__ = torch._C._disabled_torch_function_impl
+    __torch_function__ = torch._C._disabled_torch_function_impl  # type: ignore
 
     @classmethod
-    def __torch_dispatch__(
+    def __torch_dispatch__(  # type: ignore
         cls: Type,
         func: Callable[..., Any],
         types: Iterable[Type[Any]],
@@ -1236,6 +1241,14 @@ class EdgeIndex(Tensor):
 
         return torch._tensor_str._add_suffixes(prefix + tensor_str, suffixes,
                                                indent, force_newline=False)
+
+    def tolist(self) -> List[Any]:
+        """"""  # noqa: D419
+        return self._data.tolist()
+
+    def numpy(self, *, force: bool = False) -> np.ndarray:
+        """"""  # noqa: D419
+        return self._data.numpy(force=force)
 
     # Helpers #################################################################
 
@@ -1469,7 +1482,7 @@ def _slice(
     step: int = 1,
 ) -> Union[EdgeIndex, Tensor]:
 
-    if ((start is None or start <= 0)
+    if ((start is None or start == 0 or start <= -input.size(dim))
             and (end is None or end > input.size(dim)) and step == 1):
         return input._shallow_copy()  # No-op.
 
@@ -1928,7 +1941,7 @@ def _spmm(
     if transpose and not input.is_sorted_by_col:
         cls_name = input.__class__.__name__
         raise ValueError(f"'matmul(..., transpose=True)' requires "
-                         f"'{cls_name}' to be sorted by colums")
+                         f"'{cls_name}' to be sorted by columns")
 
     if (torch_geometric.typing.WITH_TORCH_SPARSE and not is_compiling()
             and other.is_cuda):  # pragma: no cover

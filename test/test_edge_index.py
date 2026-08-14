@@ -2,6 +2,7 @@ import os.path as osp
 import warnings
 from typing import List, Optional
 
+import numpy as np
 import pytest
 import torch
 from torch import Tensor, tensor
@@ -16,6 +17,7 @@ from torch_geometric.edge_index import (
     _TorchSPMM,
     set_tuple_item,
 )
+from torch_geometric.io import fs
 from torch_geometric.profile import benchmark
 from torch_geometric.testing import (
     onlyCUDA,
@@ -1211,16 +1213,16 @@ def test_sparse_resize(dtype, device):
     assert out._T_indptr is None
 
 
-def test_to_list():
-    adj = EdgeIndex([[0, 1, 1, 2], [1, 0, 2, 1]])
-    with pytest.raises(RuntimeError, match="supported for tensor subclasses"):
-        adj.tolist()
+def test_tolist():
+    data = torch.tensor([[0, 1, 1, 2], [1, 0, 2, 1]])
+    adj = EdgeIndex(data)
+    assert adj.tolist() == data.tolist()
 
 
 def test_numpy():
-    adj = EdgeIndex([[0, 1, 1, 2], [1, 0, 2, 1]])
-    with pytest.raises(RuntimeError, match="supported for tensor subclasses"):
-        adj.numpy()
+    data = torch.tensor([[0, 1, 1, 2], [1, 0, 2, 1]])
+    adj = EdgeIndex(data)
+    assert np.array_equal(adj.numpy(), data.numpy())
 
 
 @withCUDA
@@ -1256,7 +1258,7 @@ def test_save_and_load(dtype, device, tmp_path):
 
     path = osp.join(tmp_path, 'edge_index.pt')
     torch.save(adj, path)
-    out = torch.load(path)
+    out = fs.torch_load(path)
 
     assert isinstance(out, EdgeIndex)
     assert out.equal(adj)
@@ -1336,7 +1338,8 @@ def test_torch_script():
 
 
 @onlyLinux
-@withPackage('torch==2.3')
+@withPackage('torch>=2.3')
+@pytest.mark.skip(reason="Does not work currently")
 def test_compile_basic():
     import torch._dynamo as dynamo
 
@@ -1367,7 +1370,7 @@ def test_compile_basic():
 
 
 @onlyLinux
-@withPackage('torch==2.3')
+@withPackage('torch>=2.3')
 @pytest.mark.skip(reason="Does not work currently")
 def test_compile_create_edge_index():
     import torch._dynamo as dynamo

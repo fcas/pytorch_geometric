@@ -1,4 +1,3 @@
-import typing
 import warnings
 from typing import Any, List, Optional, Tuple, Union
 
@@ -71,8 +70,9 @@ def dense_to_sparse(
                          f"three-dimensional (got {adj.dim()} dimensions)")
 
     if mask is not None and adj.dim() == 2:
-        warnings.warn("Mask should not be provided in case the dense "
-                      "adjacency matrix is two-dimensional")
+        warnings.warn(
+            "Mask should not be provided in case the dense "
+            "adjacency matrix is two-dimensional", stacklevel=2)
         mask = None
 
     if mask is not None and mask.dim() != 2:
@@ -124,8 +124,7 @@ def is_torch_sparse_tensor(src: Any) -> bool:
             return True
         if src.layout == torch.sparse_csr:
             return True
-        if (torch_geometric.typing.WITH_PT112
-                and src.layout == torch.sparse_csc):
+        if src.layout == torch.sparse_csc:
             return True
     return False
 
@@ -198,15 +197,23 @@ def to_torch_coo_tensor(
         # edge_attr = edge_attr.expand(edge_index.size(1))
         edge_attr = torch.ones(edge_index.size(1), device=edge_index.device)
 
-    adj = torch.sparse_coo_tensor(
+    if not torch_geometric.typing.WITH_PT21:
+        adj = torch.sparse_coo_tensor(
+            indices=edge_index,
+            values=edge_attr,
+            size=tuple(size) + edge_attr.size()[1:],
+            device=edge_index.device,
+        )
+        adj = adj._coalesced_(True)
+        return adj
+
+    return torch.sparse_coo_tensor(
         indices=edge_index,
         values=edge_attr,
         size=tuple(size) + edge_attr.size()[1:],
         device=edge_index.device,
+        is_coalesced=True,
     )
-    adj = adj._coalesced_(True)
-
-    return adj
 
 
 def to_torch_csr_tensor(
@@ -312,12 +319,6 @@ def to_torch_csc_tensor(
                size=(4, 4), nnz=6, layout=torch.sparse_csc)
 
     """
-    if not torch_geometric.typing.WITH_PT112:
-        if typing.TYPE_CHECKING:
-            raise NotImplementedError
-        return torch_geometric.typing.MockTorchCSCTensor(
-            edge_index, edge_attr, size)
-
     if size is None:
         size = int(edge_index.max()) + 1
 
@@ -384,7 +385,7 @@ def to_torch_sparse_tensor(
         return to_torch_coo_tensor(edge_index, edge_attr, size, is_coalesced)
     if layout == torch.sparse_csr:
         return to_torch_csr_tensor(edge_index, edge_attr, size, is_coalesced)
-    if torch_geometric.typing.WITH_PT112 and layout == torch.sparse_csc:
+    if layout == torch.sparse_csc:
         return to_torch_csc_tensor(edge_index, edge_attr, size, is_coalesced)
 
     raise ValueError(f"Unexpected sparse tensor layout (got '{layout}')")
@@ -423,7 +424,7 @@ def to_edge_index(adj: Union[Tensor, SparseTensor]) -> Tuple[Tensor, Tensor]:
         col = adj.col_indices().detach()
         return torch.stack([row, col], dim=0).long(), adj.values()
 
-    if torch_geometric.typing.WITH_PT112 and adj.layout == torch.sparse_csc:
+    if adj.layout == torch.sparse_csc:
         col = ptr2index(adj.ccol_indices().detach())
         row = adj.row_indices().detach()
         return torch.stack([row, col], dim=0).long(), adj.values()
@@ -472,7 +473,7 @@ def set_sparse_value(adj: Tensor, value: Tensor) -> Tensor:
             device=value.device,
         )
 
-    if torch_geometric.typing.WITH_PT112 and adj.layout == torch.sparse_csc:
+    if adj.layout == torch.sparse_csc:
         return torch.sparse_csc_tensor(
             ccol_indices=adj.ccol_indices(),
             row_indices=adj.row_indices(),
@@ -531,17 +532,24 @@ def cat_coo(tensors: List[Tensor], dim: Union[int, Tuple[int, int]]) -> Tensor:
             if not tensor.is_coalesced():
                 is_coalesced = False
 
-    out = torch.sparse_coo_tensor(
+    if not torch_geometric.typing.WITH_PT21:
+        out = torch.sparse_coo_tensor(
+            indices=torch.cat(indices, dim=-1),
+            values=torch.cat(values),
+            size=(num_rows, num_cols) + values[-1].size()[1:],
+            device=tensor.device,
+        )
+        if is_coalesced:
+            out = out._coalesced_(True)
+        return out
+
+    return torch.sparse_coo_tensor(
         indices=torch.cat(indices, dim=-1),
         values=torch.cat(values),
         size=(num_rows, num_cols) + values[-1].size()[1:],
         device=tensor.device,
+        is_coalesced=True if is_coalesced else None,
     )
-
-    if is_coalesced:
-        out = out._coalesced_(True)
-
-    return out
 
 
 def cat_csr(tensors: List[Tensor], dim: Union[int, Tuple[int, int]]) -> Tensor:
